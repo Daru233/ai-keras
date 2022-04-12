@@ -26,6 +26,8 @@ from keras.optimizers import adam_v2
 
 gb_power_consumption_path = 'be.csv'
 
+print('start')
+
 # UTC start time
 # UTC end time
 # power consumption (MW)
