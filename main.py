@@ -2,7 +2,7 @@
 from math import sqrt
 import tensorflow as tf
 import numpy as np
-from numpy import split
+from numpy import split, nan
 from numpy import array
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -24,167 +24,164 @@ from keras.preprocessing.sequence import TimeseriesGenerator
 from keras.metrics import RootMeanSquaredError
 from keras.optimizers import adam_v2
 
-gb_power_consumption_path = 'be.csv'
 
-print('start')
+# split a univariate dataset into train/test sets
+def split_dataset(data):
+    # split into standard weeks
+    # total rows 1443
+    train, test = data[1:-328], data[-328:-6]
+    # restructure into windows of weekly data
+    train = array(split(train, len(train) / 7))
+    test = array(split(test, len(test) / 7))
+    return train, test
 
-# UTC start time
-# UTC end time
-# power consumption (MW)
-df = read_csv(gb_power_consumption_path)
-# every sample is every 15 minutes
-# I want to take every 1 hr
-df = df[::4]
-# make index to be of the start date time
-df.index = to_datetime(df['start'], format='%Y.%m.%d %H:%M:%S')
-# be_load = df['load'] is a series, minmaxscaler only accepts df
-be_load = df['load']
-# train = df.iloc[:47000]
-# test = df.iloc[47000:]
-# train = train[['load']]
-# test = test[['load']]
-# be_load = df[['load']]
-#
-# scaler = MinMaxScaler()
-# scaler.fit(be_load)
-# scaled_train = scaler.transform(train)
-# scaled_test = scaler.transform(test)
-#
-# # df_scaled_be_load = pd.DataFrame(scaled_be_load)
-# # TODO watch this https://www.youtube.com/watch?v=S8tpSG6Q2H0&t=281s
-# # TODO do like iloc: https://github.com/nachi-hebbar/Time-Series-Forecasting-LSTM/blob/main/RNN_Youtube.ipynb
-#
-# # scaled_train = scaled_be_load[:47000]
-# # scaled_test =  scaled_be_load[47000:]
-#
-# # print(f'Scaled Train Shape {scaled_train.shape}, Scaled Test {scaled_test.shape}')
-#
-# N_INPUT = 6
-# N_FEATURES = 1
-# generator = TimeseriesGenerator(scaled_train, scaled_train, length=N_INPUT, batch_size=42)
-#
-# X, y = generator[0]
-# # print(f'Given the Array: {X.flatten()}')
-# # print(f'Predict this y: {y}')
-# # print(f'X shape: {X.shape}')
-#
-# model = Sequential()
-# model.add(LSTM(128, activation='relu', kernel_initializer='he_normal', input_shape=(N_INPUT, N_FEATURES)))
-# # model.add(Dense(128, activation='relu', kernel_initializer='he_normal'))
-# # model.add(Dense(64, activation='relu', kernel_initializer='he_normal'))
-# model.add(Dense(1, activation='linear'))
-# optimzer = adam_v2.Adam(learning_rate=0.0001)
-# model.compile(loss='mse', optimizer=optimzer, metrics=[RootMeanSquaredError(), 'accuracy'])
-# model.summary()
-#
-# model.fit(generator, epochs=1)
-#
-# loss_per_epoch = model.history.history['loss']
-# # plt.plot(range(len(loss_per_epoch)), loss_per_epoch)
-# # plt.show()
-#
-#
-# test_predictions = []
-# first_eval_batch = scaled_train[-N_INPUT:]
-# # print(first_eval_batch)
-# current_batch = first_eval_batch.reshape((1, N_INPUT, N_FEATURES))
-# # print(current_batch)
-#
-# print('before')
-# for i in range(len(scaled_test)):
-#     current_pred = model.predict(current_batch)[0]
-#     # print(f'current_pred {current_pred}')
-#     test_predictions.append(current_pred)
-#     # print(f'test_pred {test_predictions}')
-#     current_batch = np.append(current_batch[:, 1:, :], [[current_pred]], axis=1)
-#
-# true_predictions = scaler.inverse_transform(test_predictions)
-#
-# be_load[47000:] = true_predictions
-# true_predictions = pd.DataFrame(true_predictions)
-# true_predictions.plot()
-# plt.show()
-#
-# import sys; sys.exit()
 
-def df_to_X_y(df, WINDOW_SIZE):
-    # df_as_np = df.to_numpy()
-    df_as_np = df
-    X = []
-    y = []
-    for i in range(len(df_as_np) - WINDOW_SIZE):
-        row = [[a] for a in df_as_np[i:i + WINDOW_SIZE]]
-        # print(f'Row {row}')
-        X.append(row)
-        label = df_as_np[i + WINDOW_SIZE]
-        # print(f'Label {label}')
-        y.append(label)
-    return np.array(X), np.array(y)
+# evaluate one or more weekly forecasts against expected values
+def evaluate_forecasts(actual, predicted):
 
-WINDOW_SIZE = 6
-EPOCHS = 5
-BATCH_SIZE = 32
-VERBOSE = 2
-POINTS_TO_DISPLAY = 250
-N_INPUT = 3
-N_FEAWTURES = 1
+    print(f'actual {actual[:5]}   predicted: {predicted[:5]}')
+    scores = list()
+    # calculate an RMSE score for each day
+    for i in range(actual.shape[1]):
+        # calculate mse
+        mse = mean_squared_error(actual[:, i], predicted[:, i])
+        # calculate rmse
+        rmse = sqrt(mse)
+        # store
+        scores.append(rmse)
+    # calculate overall RMSE
+    s = 0
+    for row in range(actual.shape[0]):
+        for col in range(actual.shape[1]):
+            s += (actual[row, col] - predicted[row, col]) ** 2
+    score = sqrt(s / (actual.shape[0] * actual.shape[1]))
+    return score, scores
 
-# generator = TimeseriesGenerator()
 
-X, y = df_to_X_y(be_load, WINDOW_SIZE)
-print(f'X Shape: {X.shape}, -- Y Shape: {y.shape}')
+# summarize scores
+def summarize_scores(name, score, scores, loss_per_epoch):
+    fig, axs = plt.subplots(2, 1, constrained_layout=True)
 
-X_train, y_train = X[:35000], y[:35000]
-X_val, y_val = X[35000:40000], y[35000:40000]
-X_test, y_test = X[40000:], y[40000:]
+    axs[0].set_title('Loss per epoch')
+    axs[0].plot(loss_per_epoch, marker='o', label='loss')
+    axs[0].legend(loc='upper left')
+    axs[0].set_label('Loss')
 
-print(f'{X_train.shape}, {y_train.shape}, {X_val.shape}, {y_val.shape}, {X_test.shape}, {y_test.shape} ')
+    days = ['sun', 'mon', 'tue', 'wed', 'thr', 'fri', 'sat']
+    axs[1].set_title('RMSE score per day')
+    axs[1].plot(days, scores, marker='o', label='lstm')
+    axs[1].legend(loc='upper left')
 
-model = Sequential()
-model.add(LSTM(128, activation='relu', kernel_initializer='he_normal', input_shape=(X_train.shape[1], X_train.shape[2])))
-model.add(Dense(128, activation='relu', kernel_initializer='he_normal'))
-model.add(Dense(64, activation='relu', kernel_initializer='he_normal'))
-model.add(Dense(1, activation='linear'))
-model.summary()
+    s_scores = ', '.join(['%.1f' % s for s in scores])
+    print('%s: [%.3f] %s' % (name, score, s_scores))
 
-optimzer = adam_v2.Adam(learning_rate=0.0003)
-# checkpoint = ModelCheckpoint('model/', save_best_only=True)
-model.compile(loss='mse', optimizer=optimzer, metrics=[RootMeanSquaredError(), 'accuracy'])
-history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=VERBOSE)
-fig, axs = plt.subplots(3)
-fig.suptitle('Train, Validation, Test')
+    plt.show()
 
-# mse, mae = model.evaluate(X_test, y_test, verbose=0)
-# print('MSE: %.3f, RMSE: %.3f, MAE: %.3f' % (mse, sqrt(mse), mae))
 
-train_predictions = model.predict(X_train).flatten()
-train_results = pd.DataFrame(data={'Train Predictions': train_predictions, 'Actuals': y_train})
-# plt.plot(train_results['Train Predictions'][:100])
-# plt.plot(train_results['Actuals'][:100])
-# plt.show()
-axs[0].set_title('Train Predictions')
-axs[0].plot(train_results['Train Predictions'][:POINTS_TO_DISPLAY], label='Predictions')
-axs[0].plot(train_results['Actuals'][:POINTS_TO_DISPLAY], label='Actuals')
-axs[0].legend(loc='upper left')
+# convert history into inputs and outputs
+def to_supervised(train, n_input, n_out=7):
+    # flatten data
+    data = train.reshape((train.shape[0] * train.shape[1], train.shape[2]))
+    X, y = list(), list()
+    in_start = 0
+    # step over the entire history one time step at a time
+    for _ in range(len(data)):
+        # define the end of the input sequence
+        in_end = in_start + n_input
+        out_end = in_end + n_out
+        # ensure we have enough data for this instance
+        if out_end <= len(data):
+            x_input = data[in_start:in_end, 0]
+            x_input = x_input.reshape((len(x_input), 1))
+            X.append(x_input)
+            y.append(data[in_end:out_end, 0])
+        # move along one time step
+        in_start += 1
 
-val_predictions = model.predict(X_val).flatten()
-val_results = pd.DataFrame(data={'Val Predictions': val_predictions, 'Actuals': y_val})
-# plt.plot(val_results['Val Predictions'][:100])
-# plt.plot(val_results['Actuals'][:100])
-# plt.show()
-axs[1].set_title('Val predictions')
-axs[1].plot(val_results['Val Predictions'][:POINTS_TO_DISPLAY], label='Predictions')
-axs[1].plot(val_results['Actuals'][:POINTS_TO_DISPLAY], label='Actuals')
-axs[1].legend(loc='upper left')
+    return array(X), array(y)
 
-test_predictions = model.predict(X_test).flatten()
-test_results = pd.DataFrame(data={'Test Predictions': test_predictions, 'Actuals': y_test})
-# plt.plot(test_results['Test Predictions'][:100])
-# plt.plot(test_results['Actuals'][:100])
-# plt.show()
-axs[2].set_title('Test Predictions')
-axs[2].plot(test_results['Test Predictions'][:POINTS_TO_DISPLAY], label='Predictions')
-axs[2].plot(test_results['Actuals'][:POINTS_TO_DISPLAY], label='Actuals')
-axs[2].legend(loc='upper left')
 
-plt.show()
+# train the model
+def build_model(train, n_input):
+    # prepare data
+    train_x, train_y = to_supervised(train, n_input)
+    # define parameters
+    VERBOSE = 2
+    EPOCHS = 5
+    BATCH_SIZE = 16
+    LEARNING_RATE = 0.008
+    n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
+    # reshape output into [samples, timesteps, features]
+    train_y = train_y.reshape((train_y.shape[0], train_y.shape[1], 1))
+
+    # define model
+    model = Sequential()
+    model.add(LSTM(200, activation='relu', input_shape=(n_timesteps, n_features)))
+    model.add(RepeatVector(n_outputs))
+    model.add(LSTM(200, activation='relu', return_sequences=True))
+    model.add(TimeDistributed(Dense(100, activation='relu')))
+    model.add(TimeDistributed(Dense(1)))
+    OPTIMZER = adam_v2.Adam(learning_rate=LEARNING_RATE)
+    model.compile(loss='mse', optimizer=OPTIMZER, metrics=['mae', 'mse'])
+
+    # fit network
+    history = model.fit(train_x, train_y, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=VERBOSE)
+    loss_per_epoch = history.history['loss']
+    return model, loss_per_epoch
+
+
+# make a forecast
+def forecast(model, history, n_input):
+    # flatten data
+    data = array(history)
+    data = data.reshape((data.shape[0] * data.shape[1], data.shape[2]))
+    # retrieve last observations for input data
+
+    input_x = data[-n_input:, 0]
+    # reshape into [1, n_input, 1]
+    input_x = input_x.reshape((1, len(input_x), 1))
+
+    # forecast the next week
+    yhat = model.predict(input_x, verbose=0)
+    # we only want the vector forecast
+    yhat = yhat[0]
+    return yhat
+
+
+# evaluate a single model
+def evaluate_model(train, test, n_input):
+    # fit model
+    model, loss_per_epoch = build_model(train, n_input)
+    # history is a list of weekly data
+    history = [x for x in train]
+    # walk-forward validation over each week
+    predictions = list()
+    for i in range(len(test)):
+        # predict the week
+        yhat_sequence = forecast(model, history, n_input)
+        # store the predictions
+        predictions.append(yhat_sequence)
+        # get real observation and add to history for predicting the next week
+        history.append(test[i, :])
+    # evaluate predictions days for each week
+    predictions = array(predictions)
+    score, scores = evaluate_forecasts(test[:, :, 0], predictions)
+    return score, scores, loss_per_epoch
+
+
+def main():
+    # load the new file
+    dataset = read_csv('household_power_consumption_days.csv', header=0, infer_datetime_format=True,
+                       parse_dates=['datetime'], index_col=['datetime'])
+
+    # split into train and test
+    train, test = split_dataset(dataset.values)
+    # evaluate model and get scores
+    n_input = 7
+    score, scores, loss_per_epoch = evaluate_model(train, test, n_input)
+    # summarize scores
+    summarize_scores('lstm', score, scores, loss_per_epoch)
+
+
+if __name__ == '__main__':
+    main()
