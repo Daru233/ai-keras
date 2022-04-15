@@ -1,0 +1,23 @@
+abstract
+	summarize the paper
+
+introduction
+	traditional dl
+	brief intro on NN, RNN
+	many types
+	Limitations of RNN
+
+Define many to many type seq problem
+	talk about the dataset, where I got it
+	how I prepared the dataset 
+	frame the problem context
+
+
+Designing and Developing the LSTM neural network 
+	Architecture, encoder decoder 
+	chosen activation function 
+
+Performance analysis
+
+a - define many to many seq problem
+	

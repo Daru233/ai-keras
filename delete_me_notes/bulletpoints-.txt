@@ -1,0 +1,40 @@
+Traditional DL
+	use convolutional filters,
+	2d filters and extract features in a cascaded way
+	generate featutres as inputs to the dense layer
+	(feedforeward layer, dense)
+	output usually probability
+	information travels from input, process, output
+
+feed foreward network vs recurrent network
+	in time series, feedforeward doesn't work
+	RNN are different from NN -> RNN remembers the past
+	NN typically models x to predict y
+	RNN are desgined to make use of sequential information
+		y to predict y
+
+Unrolling RNN
+	
+Many types of RNN
+	one to one - image classification
+	given an image of a cat or a dog, determine if it is a cat, /dog
+	
+	one to many - image captioning 
+	given an image, output a sentence - a dog running
+
+	many to one - sentiment analysis
+	given a list of tweets on a hastag, - tweets are excited, happy
+
+	many to many - language translation
+	
+Problem with RNN
+	RNNs are good with short sequences
+	sometimes a lot of previous information is needed to get the answer right
+	and RNNs seem to fail
+	
+	limitations: 
+		gradient vanishing and exploding
+		complex training
+		difficulty to process very long sequences
+
+	LSTMs remember information for long periods of time 
